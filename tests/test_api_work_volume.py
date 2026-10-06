@@ -193,3 +193,74 @@ def test_token_auth(api_client, manager_user, payload, fake_tsdb):
 def test_extra_field(api_client, manager_user, payload, fake_tsdb):
     resp = post(api_client, manager_user, body_for(payload, manager_user, extra="x"))
     assert resp.status_code == 201
+
+
+def test_deeply_nested_json_is_json_error(api_client, manager_user):
+    api_client.force_authenticate(manager_user)
+    body = "[" * 100000 + "]" * 100000
+    resp = api_client.post(URL, data=body, content_type="application/json")
+    assert_error(resp, 400, 901)
+
+
+def test_unexpected_exception_is_json_500(api_client, manager_user, monkeypatch):
+    from plan import services
+
+    def boom(**kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(services, "save_work_volume", boom)
+    api_client.raise_request_exception = False
+    resp = post(
+        api_client,
+        manager_user,
+        {
+            "factory": 1,
+            "start": 0,
+            "finish": 0,
+            "weight": 1,
+            "author": manager_user.pk,
+        },
+    )
+    assert_error(resp, 500, 999)
+
+
+def test_unauthenticated_beats_not_acceptable(api_client):
+    resp = api_client.post(
+        URL, data="{}", content_type="application/json", HTTP_ACCEPT="application/xml"
+    )
+    assert_error(resp, 401, 900)
+
+
+def test_not_acceptable_when_authenticated(api_client, manager_user):
+    api_client.force_authenticate(manager_user)
+    resp = api_client.post(
+        URL, data="{}", content_type="application/json", HTTP_ACCEPT="application/xml"
+    )
+    assert_error(resp, 406, 907)
+
+
+def test_csrf_failure_is_not_902(db):
+    from django.contrib.auth import get_user_model
+    from rest_framework.test import APIClient
+
+    client = APIClient(enforce_csrf_checks=True)
+    get_user_model().objects.create_user(username="sess", password="pw12345678")
+    client.login(username="sess", password="pw12345678")
+    resp = client.post(URL, data={}, format="json")
+    assert_error(resp, 403, 908)
+
+
+def test_slash_optional(api_client, manager_user):
+    api_client.force_authenticate(manager_user)
+    resp = api_client.post("/work-volume-list", data={}, format="json")
+    assert_error(resp, 406, 279)
+
+
+def test_messages_are_english(api_client, payload, manager_user):
+    resp = api_client.post(URL, data={}, format="json")
+    assert resp.json()["message"] == "Authentication credentials were not provided."
+    api_client.force_authenticate(manager_user)
+    resp = api_client.get(URL)
+    assert "not allowed" in resp.json()["message"]
+    resp = post(api_client, manager_user, payload(author=manager_user.pk, weight=2147483648))
+    assert "less than or equal" in str(resp.json()["details"]["weight"])

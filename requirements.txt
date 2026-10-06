@@ -1,6 +1,6 @@
-Django==5.2.*
-djangorestframework==3.16.*
-psycopg[binary]==3.2.*
-clickhouse-connect==0.8.*
-gunicorn==23.*
-whitenoise==6.*
+Django==5.2.17
+djangorestframework==3.16.1
+psycopg[binary]==3.2.13
+clickhouse-connect==0.8.18
+gunicorn==23.0.0
+whitenoise==6.12.0

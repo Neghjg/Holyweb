@@ -1,12 +1,13 @@
 .git
 .venv
 venv
-__pycache__
-*.pyc
+**/__pycache__
+**/*.pyc
 .env
 docs/
 staticfiles/
 .pytest_cache
+.ruff_cache
 *.sqlite3
 /readme.md
 /c4.drawio

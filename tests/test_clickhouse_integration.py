@@ -8,7 +8,22 @@ from plan import tsdb
 pytestmark = pytest.mark.clickhouse
 
 
-def test_roundtrip():
+@pytest.fixture
+def isolated_db(settings):
+    """Run against a throwaway database, never the real `plan` one."""
+    name = f"plan_test_{uuid.uuid4().hex[:12]}"
+    settings.CLICKHOUSE = {**settings.CLICKHOUSE, "database": name}
+    tsdb._client = None
+    yield name
+    tsdb._client = None
+    admin = tsdb._connect(None)
+    try:
+        admin.command(f"DROP DATABASE IF EXISTS {name}")
+    finally:
+        admin.close()
+
+
+def test_roundtrip(isolated_db):
     tsdb.ensure_schema()
     tsdb.ensure_schema()  # idempotent
     fid = uuid.uuid4()

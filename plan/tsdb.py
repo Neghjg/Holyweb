@@ -1,5 +1,6 @@
 """ClickHouse (tsDB) access layer: the only module that knows about the driver."""
 
+import logging
 import re
 import threading
 from dataclasses import dataclass
@@ -7,11 +8,12 @@ from datetime import date, datetime
 from uuid import UUID
 
 import clickhouse_connect
-from clickhouse_connect.driver.exceptions import ClickHouseError
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
 from .errors import TsDBUnavailable
+
+logger = logging.getLogger(__name__)
 
 TABLE_NAME = "work_volume_record"
 _IDENT_RE = re.compile(r"^[A-Za-z0-9_]+$")
@@ -63,6 +65,11 @@ def _connect(database: str | None):
         "port": cfg["port"],
         "username": cfg["username"],
         "password": cfg["password"],
+        "connect_timeout": cfg["connect_timeout"],
+        "send_receive_timeout": cfg["send_receive_timeout"],
+        # A cached client may be shared by threads; a fixed session id would make
+        # concurrent queries fail with "concurrent queries within the same session".
+        "autogenerate_session_id": False,
     }
     if database:
         kwargs["database"] = database
@@ -92,10 +99,11 @@ def ensure_schema() -> None:
 
 class ClickHouseWorkVolumeRecordRepository:
     def add(self, record: WorkVolumeRecordDTO) -> None:
+        table = f"{_database_name()}.{TABLE_NAME}"
         try:
             client = get_clickhouse_client()
             client.insert(
-                f"{_database_name()}.{TABLE_NAME}",
+                table,
                 [
                     [
                         record.factory,
@@ -109,7 +117,8 @@ class ClickHouseWorkVolumeRecordRepository:
                 column_names=INSERT_COLUMNS,
                 settings={"async_insert": 0},
             )
-        except (ClickHouseError, OSError) as e:
+        except Exception as e:  # any driver/network/timeout failure -> 503/904, PG rolls back
+            logger.warning("ClickHouse insert failed: %r", e)
             raise TsDBUnavailable() from e
 
 

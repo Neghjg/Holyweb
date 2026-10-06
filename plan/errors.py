@@ -70,7 +70,7 @@ def api_exception_handler(exc, context):
 
     if not isinstance(exc, exceptions.APIException):
         logger.exception("Unhandled exception", exc_info=exc)
-        return None
+        return Response(_body(ErrorCode.INTERNAL_ERROR, "Internal error", {}), status=500)
 
     # Let DRF compute headers (WWW-Authenticate, Retry-After) and status code.
     drf_response = drf_exception_handler(exc, context)
@@ -91,7 +91,8 @@ def api_exception_handler(exc, context):
     elif isinstance(exc, exceptions.NotAcceptable):
         status, code, details = 406, ErrorCode.NOT_ACCEPTABLE, {}
     elif isinstance(exc, exceptions.PermissionDenied):
-        status, code, details = 403, ErrorCode.NO_PERMITTED_GROUP, {}
+        # Business 403s are ApiError (902/903); this is a generic one, e.g. CSRF failure.
+        status, code, details = 403, ErrorCode.FORBIDDEN, {}
     elif isinstance(exc, exceptions.NotFound):
         status, code, details = 404, ErrorCode.INTERNAL_ERROR, {}
     else:

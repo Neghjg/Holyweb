@@ -97,6 +97,9 @@ CLICKHOUSE = {
     "username": os.environ.get("CLICKHOUSE_USER", "default"),
     "password": os.environ.get("CLICKHOUSE_PASSWORD", ""),
     "database": os.environ.get("CLICKHOUSE_DATABASE", "plan"),
+    # Must stay well below the gunicorn --timeout (30 s), so a hung ClickHouse yields 503/904.
+    "connect_timeout": float(os.environ.get("CLICKHOUSE_CONNECT_TIMEOUT", "5")),
+    "send_receive_timeout": float(os.environ.get("CLICKHOUSE_SEND_RECEIVE_TIMEOUT", "10")),
 }
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -106,7 +109,7 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
-LANGUAGE_CODE = "ru-ru"
+LANGUAGE_CODE = "en-us"  # API messages are English (D6)
 TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True

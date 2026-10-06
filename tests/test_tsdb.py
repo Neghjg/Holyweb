@@ -55,3 +55,33 @@ def test_invalid_database_name():
     with override_settings(CLICKHOUSE={**tsdb.settings.CLICKHOUSE, "database": "a; DROP"}):
         with pytest.raises(ImproperlyConfigured):
             tsdb.ensure_schema()
+
+
+def test_connect_passes_timeouts():
+    with mock.patch.object(tsdb.clickhouse_connect, "get_client") as get_client:
+        tsdb._connect("plan")
+    kwargs = get_client.call_args.kwargs
+    cfg = tsdb.settings.CLICKHOUSE
+    assert kwargs["connect_timeout"] == cfg["connect_timeout"]
+    assert kwargs["send_receive_timeout"] == cfg["send_receive_timeout"]
+    # sum must stay well below gunicorn --timeout (30 s)
+    assert kwargs["connect_timeout"] + kwargs["send_receive_timeout"] < 30
+    assert kwargs["autogenerate_session_id"] is False
+
+
+def test_timeout_wrapped_as_unavailable():
+    from clickhouse_connect.driver.exceptions import OperationalError
+
+    client = mock.Mock()
+    client.insert.side_effect = OperationalError("Read timed out")
+    with mock.patch.object(tsdb, "get_clickhouse_client", return_value=client):
+        with pytest.raises(TsDBUnavailable):
+            tsdb.ClickHouseWorkVolumeRecordRepository().add(_dto())
+
+
+def test_unexpected_driver_exception_wrapped():
+    client = mock.Mock()
+    client.insert.side_effect = ValueError("weird")
+    with mock.patch.object(tsdb, "get_clickhouse_client", return_value=client):
+        with pytest.raises(TsDBUnavailable):
+            tsdb.ClickHouseWorkVolumeRecordRepository().add(_dto())

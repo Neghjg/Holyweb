@@ -14,13 +14,17 @@ Python 3.12, Django 5.2 LTS, Django REST Framework 3.16, PostgreSQL 16 (taDB), C
 ## Быстрый старт
 
 ```bash
-cp .env.example .env   # необязательно: те же значения по умолчанию есть в docker-compose.yml
-docker compose up --build
+(cat .env.example; echo "DJANGO_SECRET_KEY=$(openssl rand -hex 32)") > .env
+docker compose up -d --build
 ```
 
-При старте backend выполняет `migrate`, `init_clickhouse` (создание БД и таблицы `plan.work_volume_record`, идемпотентно) и, если `SEED_DEMO=1`, `seed_demo`. API доступно на `http://localhost:8000` (порт меняется переменной `BACKEND_PORT`).
+Первая команда создаёт `.env` из `.env.example` и добавляет случайный `DJANGO_SECRET_KEY`. У ключа **нет значения по умолчанию**: без него `docker compose` отказывается стартовать с понятной ошибкой (и приложение при `DJANGO_DEBUG=0` тоже). Без `openssl` подойдёт любая случайная строка: `python3 -c "import secrets; print(secrets.token_hex(32))"`.
 
-> `SEED_DEMO=1` создаёт пользователей с известным паролем. Только для демо!
+При старте backend выполняет `migrate`, `init_clickhouse` (создание БД и таблицы `plan.work_volume_record`, идемпотентно) и, если `SEED_DEMO=1`, `seed_demo`. API доступно на `http://127.0.0.1:8000`. Порт публикуется только на loopback; хост и порт меняются переменными `BACKEND_HOST` и `BACKEND_PORT` (например, `BACKEND_HOST=0.0.0.0`, если нужен доступ из сети).
+
+> `SEED_DEMO=1` (включён в `.env.example`) создаёт пользователей с **известным паролем** `demo12345`. Это **только для демо**. В compose по умолчанию `SEED_DEMO=0`; для реальной среды уберите его из `.env`. `seed_demo` создаёт только отсутствующих пользователей и не сбрасывает пароли и группы существующих.
+
+Админка (`/admin/`): `docker compose exec backend python manage.py createsuperuser`. Суперпользователь прав на use case не получает, права определяются только группами.
 
 ## Демо-пользователи
 
@@ -32,7 +36,7 @@ docker compose up --build
 | `manager` | Менеджер по взаимодействию с ЗМК | любой ЗМК |
 | `nobody` | нет | запрещено |
 
-Команда печатает таблицу `username / user_id / token / factory ids` (смотрите логи `docker compose logs backend`). Повторно:
+Команда печатает таблицу `username / user_id / token / factory ids` (смотрите логи `docker compose logs backend`). Повторно (идемпотентно, уже существующих пользователей не меняет):
 `docker compose exec backend python manage.py seed_demo`.
 
 ## Контракт API
@@ -67,9 +71,13 @@ docker compose up --build
 | 404 | 174 | ЗМК не существует, либо представитель не привязан к ЗМК |
 | 405 | 905 | метод не POST |
 | 406 | 279 | не заполнены обязательные поля (`details.missing`) |
-| 406 | 907 | неподходящий `Accept` |
+| 406 | 907 | неподходящий `Accept` (проверяется после аутентификации) |
+| 403 | 908 | прочий отказ в доступе, например CSRF при сессионной аутентификации |
+| 500 | 999 | необработанная внутренняя ошибка (тоже в JSON-формате) |
 | 415 | 906 | Content-Type не JSON |
 | 503 | 904 | ClickHouse недоступен, изменения в Postgres откатены |
+
+Путь `/work-volume-list/` принимается и без завершающего слэша. Сообщения об ошибках на английском.
 
 Порядок проверок: аутентификация -> тело (400/415) -> заполненность (406/279) -> типы и значения (400/901) -> существование ЗМК (404/174) -> author (403/903) -> группы и привязка (403/902, 404/174) -> сохранение (201/503).
 
@@ -78,7 +86,7 @@ docker compose up --build
 Подставьте `<manager_id>`, `<rep_id>`, `<token>` из вывода `seed_demo`. Даты: `1735689600` = 2025-01-01, `1738281600` = 2025-01-31.
 
 ```bash
-URL=http://localhost:8000/work-volume-list/
+URL=http://127.0.0.1:8000/work-volume-list/
 H='Content-Type: application/json'
 
 # 201: менеджер (Basic)
@@ -108,7 +116,24 @@ curl -i -u nobody:demo12345 -H "$H" -d '{"factory":1,"start":1735689600,"finish"
 
 # 401/900: без авторизации
 curl -i -H "$H" -d '{}' $URL
+
+# 400/901: неверный тип (строка вместо числа), битый JSON, тело-массив
+curl -i -u manager:demo12345 -H "$H" -d '{"factory":"1","start":1735689600,"finish":1738281600,"weight":1,"author":<manager_id>}' $URL
+curl -i -u manager:demo12345 -H "$H" -d '{bad' $URL
+curl -i -u manager:demo12345 -H "$H" -d '[1,2]' $URL
+
+# 405/905: не POST; 415/906: не JSON; 406/907: неподходящий Accept
+curl -i -u manager:demo12345 $URL
+curl -i -u manager:demo12345 -H 'Content-Type: text/plain' -d 'x' $URL
+curl -i -u manager:demo12345 -H "$H" -H 'Accept: application/xml' -d '{}' $URL
+
+# 503/904: ClickHouse недоступен (изменения в Postgres откатываются)
+docker compose stop clickhouse
+curl -i -u manager:demo12345 -H "$H" -d '{"factory":1,"start":1735689600,"finish":1738281600,"weight":1,"author":<manager_id>}' $URL
+docker compose start clickhouse
 ```
+
+Если ClickHouse не отвечает (завис), клиент ClickHouse обрывает запрос по таймаутам `CLICKHOUSE_CONNECT_TIMEOUT` (5 с) и `CLICKHOUSE_SEND_RECEIVE_TIMEOUT` (10 с), и ответ тоже 503/904. Сумма заметно меньше `--timeout 30` у gunicorn.
 
 ## Записи в ClickHouse
 
@@ -136,9 +161,20 @@ Postgres поднимается по `depends_on`. Образ собираетс
 - Порядок проверок по диаграмме: существование ЗМК проверяется до групп, поэтому пользователь без групп может узнать, существует ли ЗМК (404 против 403).
 - `created` - `DateTimeField` (UTC), перезаписывается при обновлении, по смыслу это «время последнего сохранения».
 - Postgres и ClickHouse: upsert в Postgres внутри транзакции -> вставка в ClickHouse -> commit. При сбое ClickHouse - откат и 503. Остаточный риск: ClickHouse записал, а commit упал - в журнале останется лишняя запись.
-- `SECRET_KEY` обязателен при `DJANGO_DEBUG=0`.
+- `DJANGO_SECRET_KEY` обязателен: в compose нет значения по умолчанию (`${DJANGO_SECRET_KEY:?...}`), а `settings.py` при `DJANGO_DEBUG=0` без ключа падает с `ImproperlyConfigured`. Только при `DJANGO_DEBUG=1` (локальная разработка и тесты) подставляется небезопасный dev-ключ.
+- Язык сообщений API - английский (`LANGUAGE_CODE=en-us`); имена групп и демо-данные остаются русскими, как в ТЗ.
 
 ## Ограничения и развитие
+
+Известные ограничения (сознательно не исправлены):
+
+- Нет распределённой транзакции Postgres + ClickHouse. Возможны два рассогласования: (1) ClickHouse записал, а `COMMIT` в Postgres упал; (2) вставка в ClickHouse дошла до сервера, но ответ потерян или истёк таймаут: клиент получает 503, Postgres откатан, а в ClickHouse запись уже есть (фантомная). Короткие таймауты делают второй случай вероятнее. Журнал append-only, повтор запроса безопасен для Postgres (upsert), но в ClickHouse появится дубль. Лечится transactional outbox или дедупликацией (`insert_deduplication_token`, `ReplacingMergeTree`).
+- `created` берётся в приложении до захвата блокировки строки, поэтому при гонке двух запросов на один период теоретически возможна инверсия порядка `created` между Postgres и ClickHouse (окно в микросекунды, на практике не воспроизводилось).
+- Блокировка строки `WorkVolume` удерживается на время вставки в ClickHouse (до 15 с при зависшем ClickHouse); запросы с тем же ключом ждут.
+- Образ собирается с dev-зависимостями (`INSTALL_DEV=1`) ради запуска тестов одной командой.
+- Зависимости зафиксированы до patch-версии, но без lock-файла с хэшами и транзитивными пакетами.
+
+Развитие:
 
 - Transactional outbox для гарантированной доставки в tsDB.
 - Правила для пересекающихся периодов.

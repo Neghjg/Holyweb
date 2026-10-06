@@ -14,8 +14,17 @@ from .serializers import (
 class WorkVolumeListView(APIView):
     http_method_names = ["post", "options"]
 
+    def initial(self, request, *args, **kwargs):
+        # D5: authentication (401/900) goes before content negotiation (406/907).
+        self.perform_authentication(request)
+        self.check_permissions(request)
+        super().initial(request, *args, **kwargs)
+
     def post(self, request):
-        data = request.data
+        try:
+            data = request.data
+        except RecursionError:  # absurdly nested JSON is not a ValueError for the parser
+            raise ValidationFailed("Request body is nested too deeply") from None
         if not isinstance(data, dict):
             raise ValidationFailed("Request body must be a JSON object")
 

@@ -38,7 +38,7 @@ services:
       args:
         INSTALL_DEV: "1"  # dev deps in the image so tests run with one command (see README)
     environment:
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-change-me}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?set DJANGO_SECRET_KEY, see README (quick start)}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-0}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
       POSTGRES_HOST: postgres
@@ -51,7 +51,9 @@ services:
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:-plan}
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-plan}
       CLICKHOUSE_DATABASE: ${CLICKHOUSE_DATABASE:-plan}
-      SEED_DEMO: ${SEED_DEMO:-1}
+      SEED_DEMO: ${SEED_DEMO:-0}
+      CLICKHOUSE_CONNECT_TIMEOUT: ${CLICKHOUSE_CONNECT_TIMEOUT:-5}
+      CLICKHOUSE_SEND_RECEIVE_TIMEOUT: ${CLICKHOUSE_SEND_RECEIVE_TIMEOUT:-10}
       DEMO_PASSWORD: ${DEMO_PASSWORD:-demo12345}
     depends_on:
       postgres:
@@ -59,7 +61,7 @@ services:
       clickhouse:
         condition: service_healthy
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      - "${BACKEND_HOST:-127.0.0.1}:${BACKEND_PORT:-8000}:8000"
 
 volumes:
   pg_data:

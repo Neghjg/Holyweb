@@ -28,12 +28,14 @@ def save_work_volume(
     author_id: int,
     repo=None,
 ) -> WorkVolume:
+    # The author check does not depend on the factory, so it goes first: otherwise the
+    # 403 vs 404 difference would reveal which factories exist.
+    if author_id != user.pk:
+        raise AuthorMismatch()
+
     factory = Factory.objects.filter(pk=factory_id).first()
     if factory is None:
         raise FactoryNotFound()
-
-    if author_id != user.pk:
-        raise AuthorMismatch()
 
     groups = set(user.groups.values_list("name", flat=True))
     if GROUP_FACTORY_MANAGER in groups:

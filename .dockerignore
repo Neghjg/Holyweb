@@ -15,3 +15,4 @@ staticfiles/
 /use_case_map.puml
 /V_b_24.puml
 /request.schema.json
+.internal/

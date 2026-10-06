@@ -5,3 +5,5 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("", include("plan.urls")),
 ]
+
+handler404 = "plan.errors.not_found_view"

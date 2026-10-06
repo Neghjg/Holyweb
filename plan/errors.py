@@ -1,6 +1,7 @@
 import logging
 
-from django.http import Http404
+from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
+from django.http import Http404, JsonResponse
 from rest_framework import exceptions
 from rest_framework.response import Response
 from rest_framework.views import exception_handler as drf_exception_handler
@@ -61,12 +62,19 @@ def _body(code: ErrorCode, message: str, details) -> dict:
     return {"errorCode": int(code), "message": message, "details": details}
 
 
+def not_found_view(request, exception=None):
+    """JSON 404 for URLs outside the API (the body follows the common error format)."""
+    return JsonResponse(_body(ErrorCode.NOT_FOUND, "Not found", {}), status=404)
+
+
 def api_exception_handler(exc, context):
     if isinstance(exc, ApiError):
         return Response(_body(exc.error_code, exc.message, exc.details), status=exc.status_code)
 
     if isinstance(exc, Http404):
         exc = exceptions.NotFound()
+    elif isinstance(exc, DjangoPermissionDenied):
+        exc = exceptions.PermissionDenied()
 
     if not isinstance(exc, exceptions.APIException):
         logger.exception("Unhandled exception", exc_info=exc)
@@ -83,7 +91,8 @@ def api_exception_handler(exc, context):
     elif isinstance(exc, exceptions.ParseError):
         status, code, details = 400, ErrorCode.VALIDATION_ERROR, {}
     elif isinstance(exc, exceptions.ValidationError):
-        status, code, details = 400, ErrorCode.VALIDATION_ERROR, exc.detail
+        details = exc.detail if isinstance(exc.detail, dict) else {"non_field_errors": exc.detail}
+        status, code = 400, ErrorCode.VALIDATION_ERROR
     elif isinstance(exc, exceptions.MethodNotAllowed):
         status, code, details = 405, ErrorCode.METHOD_NOT_ALLOWED, {}
     elif isinstance(exc, exceptions.UnsupportedMediaType):
@@ -94,7 +103,7 @@ def api_exception_handler(exc, context):
         # Business 403s are ApiError (902/903); this is a generic one, e.g. CSRF failure.
         status, code, details = 403, ErrorCode.FORBIDDEN, {}
     elif isinstance(exc, exceptions.NotFound):
-        status, code, details = 404, ErrorCode.INTERNAL_ERROR, {}
+        status, code, details = 404, ErrorCode.NOT_FOUND, {}
     else:
         status, code, details = exc.status_code, ErrorCode.INTERNAL_ERROR, {}
 

@@ -38,8 +38,10 @@ services:
       args:
         INSTALL_DEV: "1"  # dev deps in the image so tests run with one command (see README)
     environment:
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?set DJANGO_SECRET_KEY, see README (quick start)}
-      DJANGO_DEBUG: ${DJANGO_DEBUG:-0}
+      # Demo defaults: the stack starts without .env. For a prod-like run set DJANGO_DEBUG=0,
+      # your own DJANGO_SECRET_KEY and SEED_DEMO=0 (see README).
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-insecure-key-do-not-use-in-production}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-1}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
@@ -51,7 +53,7 @@ services:
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:-plan}
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-plan}
       CLICKHOUSE_DATABASE: ${CLICKHOUSE_DATABASE:-plan}
-      SEED_DEMO: ${SEED_DEMO:-0}
+      SEED_DEMO: ${SEED_DEMO:-1}
       CLICKHOUSE_CONNECT_TIMEOUT: ${CLICKHOUSE_CONNECT_TIMEOUT:-5}
       CLICKHOUSE_SEND_RECEIVE_TIMEOUT: ${CLICKHOUSE_SEND_RECEIVE_TIMEOUT:-10}
       DEMO_PASSWORD: ${DEMO_PASSWORD:-demo12345}

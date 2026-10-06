@@ -264,3 +264,94 @@ def test_messages_are_english(api_client, payload, manager_user):
     assert "not allowed" in resp.json()["message"]
     resp = post(api_client, manager_user, payload(author=manager_user.pk, weight=2147483648))
     assert "less than or equal" in str(resp.json()["details"]["weight"])
+
+
+# --- order of checks when several errors occur at once ---------------------------------
+
+
+def test_author_mismatch_does_not_reveal_factory_existence(
+    api_client, rep_user, factory_b, payload, fake_tsdb
+):
+    existing = post(api_client, rep_user, payload(author=rep_user.pk + 100, factory=factory_b.pk))
+    missing = post(api_client, rep_user, payload(author=rep_user.pk + 100, factory=99999))
+    assert_error(existing, 403, 903)
+    assert existing.status_code == missing.status_code
+    assert existing.json() == missing.json()
+
+
+@pytest.mark.parametrize("who", ["nobody_user", "manager_user"])
+def test_author_mismatch_beats_unknown_factory(api_client, payload, fake_tsdb, request, who):
+    user = request.getfixturevalue(who)
+    resp = post(api_client, user, payload(author=user.pk + 100, factory=99999))
+    assert_error(resp, 403, 903)
+
+
+def test_foreign_and_unknown_factory_look_the_same_for_rep(
+    api_client, rep_user, factory_b, payload, fake_tsdb
+):
+    foreign = post(api_client, rep_user, body_for(payload, rep_user, factory=factory_b.pk))
+    unknown = post(api_client, rep_user, body_for(payload, rep_user, factory=99999))
+    assert_error(foreign, 404, 174)
+    assert foreign.json() == unknown.json()
+
+
+@pytest.mark.parametrize(
+    "who, overrides, expected",
+    [
+        # empty field wins over everything after it
+        ("manager_user", {"start": None, "factory": 99999}, (406, 279)),
+        ("manager_user", {"start": None, "author": "wrong"}, (406, 279)),
+        ("nobody_user", {"start": None, "factory": 99999, "author": "wrong"}, (406, 279)),
+        ("nobody_user", {"weight": None}, (406, 279)),
+        # empty field wins over a wrong type of another field
+        ("manager_user", {"start": None, "weight": "x"}, (406, 279)),
+        # wrong type/value wins over author, factory and groups
+        ("manager_user", {"weight": "x", "author": "wrong", "factory": 99999}, (400, 901)),
+        ("nobody_user", {"weight": -1}, (400, 901)),
+        # author wins over factory and groups
+        ("nobody_user", {"author": "wrong", "factory": 99999}, (403, 903)),
+        ("nobody_user", {"author": "wrong"}, (403, 903)),
+        # unknown factory wins over missing group
+        ("nobody_user", {"factory": 99999}, (404, 174)),
+        # existing factory, no group
+        ("nobody_user", {}, (403, 902)),
+    ],
+)
+def test_error_priority(api_client, payload, fake_tsdb, request, who, overrides, expected):
+    user = request.getfixturevalue(who)
+    ov = dict(overrides)
+    if ov.get("author") == "wrong":
+        ov["author"] = user.pk + 100
+    elif "author" not in ov:
+        ov["author"] = user.pk
+    resp = post(api_client, user, payload(**ov))
+    assert_error(resp, *expected)
+    assert WorkVolume.objects.count() == 0 and fake_tsdb == []
+
+
+def test_django_permission_denied_is_403(api_client, manager_user, monkeypatch):
+    from django.core.exceptions import PermissionDenied
+
+    from plan import services
+
+    def deny(**kwargs):
+        raise PermissionDenied("nope")
+
+    monkeypatch.setattr(services, "save_work_volume", deny)
+    resp = post(
+        api_client,
+        manager_user,
+        {"factory": 1, "start": 0, "finish": 0, "weight": 1, "author": manager_user.pk},
+    )
+    assert_error(resp, 403, 908)
+
+
+def test_unknown_url_is_json_404(api_client):
+    resp = api_client.get("/nope/")
+    assert_error(resp, 404, 909)
+
+
+def test_reverse_gives_canonical_path_with_slash():
+    from django.urls import reverse
+
+    assert reverse("work-volume-list") == "/work-volume-list/"

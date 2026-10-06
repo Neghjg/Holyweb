@@ -15,7 +15,7 @@ class WorkVolumeListView(APIView):
     http_method_names = ["post", "options"]
 
     def initial(self, request, *args, **kwargs):
-        # D5: authentication (401/900) goes before content negotiation (406/907).
+        # Authentication (401/900) goes before content negotiation (406/907).
         self.perform_authentication(request)
         self.check_permissions(request)
         super().initial(request, *args, **kwargs)

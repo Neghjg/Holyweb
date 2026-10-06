@@ -19,12 +19,14 @@ def env_list(name: str, default: str = "") -> list[str]:
 
 DEBUG = env_bool("DJANGO_DEBUG", False)
 
+DEV_SECRET_KEY = "dev-insecure-key-do-not-use-in-production"  # demo/dev only
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
+if not DEBUG and (not SECRET_KEY or SECRET_KEY == DEV_SECRET_KEY):
+    raise ImproperlyConfigured(
+        "Set your own DJANGO_SECRET_KEY when DJANGO_DEBUG=0 (the dev key is not allowed)"
+    )
 if not SECRET_KEY:
-    if DEBUG:
-        SECRET_KEY = "dev-insecure-key"
-    else:
-        raise ImproperlyConfigured("DJANGO_SECRET_KEY must be set when DJANGO_DEBUG=0")
+    SECRET_KEY = DEV_SECRET_KEY
 
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1")
 
@@ -109,7 +111,7 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
-LANGUAGE_CODE = "en-us"  # API messages are English (D6)
+LANGUAGE_CODE = "en-us"  # API messages are English
 TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True

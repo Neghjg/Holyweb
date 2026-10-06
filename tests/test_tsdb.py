@@ -1,8 +1,11 @@
 import datetime
+import re
 import uuid
+from pathlib import Path
 from unittest import mock
 
 import pytest
+import urllib3.exceptions
 from clickhouse_connect.driver.exceptions import ClickHouseError
 from django.core.exceptions import ImproperlyConfigured
 from django.test import override_settings
@@ -57,16 +60,38 @@ def test_invalid_database_name():
             tsdb.ensure_schema()
 
 
-def test_connect_passes_timeouts():
-    with mock.patch.object(tsdb.clickhouse_connect, "get_client") as get_client:
-        tsdb._connect("plan")
+def test_connect_passes_configured_timeouts():
+    cfg = {**tsdb.settings.CLICKHOUSE, "connect_timeout": 1.5, "send_receive_timeout": 2.5}
+    with override_settings(CLICKHOUSE=cfg):
+        with mock.patch.object(tsdb.clickhouse_connect, "get_client") as get_client:
+            tsdb._connect("plan")
     kwargs = get_client.call_args.kwargs
-    cfg = tsdb.settings.CLICKHOUSE
-    assert kwargs["connect_timeout"] == cfg["connect_timeout"]
-    assert kwargs["send_receive_timeout"] == cfg["send_receive_timeout"]
-    # sum must stay well below gunicorn --timeout (30 s)
-    assert kwargs["connect_timeout"] + kwargs["send_receive_timeout"] < 30
+    assert kwargs["connect_timeout"] == 1.5
+    assert kwargs["send_receive_timeout"] == 2.5
     assert kwargs["autogenerate_session_id"] is False
+
+
+def test_default_timeouts_stay_below_gunicorn_timeout():
+    cmd = (Path(__file__).resolve().parent.parent / "Dockerfile").read_text()
+    gunicorn_timeout = int(re.search(r"--timeout\D+(\d+)", cmd).group(1))
+    cfg = tsdb.settings.CLICKHOUSE
+    assert cfg["connect_timeout"] + cfg["send_receive_timeout"] < gunicorn_timeout
+
+
+def test_programming_errors_are_not_masked():
+    client = mock.Mock()
+    client.insert.side_effect = TypeError("bug")
+    with mock.patch.object(tsdb, "get_clickhouse_client", return_value=client):
+        with pytest.raises(TypeError):
+            tsdb.ClickHouseWorkVolumeRecordRepository().add(_dto())
+
+
+def test_urllib3_error_wrapped():
+    client = mock.Mock()
+    client.insert.side_effect = urllib3.exceptions.HTTPError("conn")
+    with mock.patch.object(tsdb, "get_clickhouse_client", return_value=client):
+        with pytest.raises(TsDBUnavailable):
+            tsdb.ClickHouseWorkVolumeRecordRepository().add(_dto())
 
 
 def test_timeout_wrapped_as_unavailable():
@@ -74,14 +99,6 @@ def test_timeout_wrapped_as_unavailable():
 
     client = mock.Mock()
     client.insert.side_effect = OperationalError("Read timed out")
-    with mock.patch.object(tsdb, "get_clickhouse_client", return_value=client):
-        with pytest.raises(TsDBUnavailable):
-            tsdb.ClickHouseWorkVolumeRecordRepository().add(_dto())
-
-
-def test_unexpected_driver_exception_wrapped():
-    client = mock.Mock()
-    client.insert.side_effect = ValueError("weird")
     with mock.patch.object(tsdb, "get_clickhouse_client", return_value=client):
         with pytest.raises(TsDBUnavailable):
             tsdb.ClickHouseWorkVolumeRecordRepository().add(_dto())

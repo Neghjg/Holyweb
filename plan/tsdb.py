@@ -8,6 +8,8 @@ from datetime import date, datetime
 from uuid import UUID
 
 import clickhouse_connect
+import urllib3.exceptions
+from clickhouse_connect.driver.exceptions import ClickHouseError
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
@@ -117,7 +119,9 @@ class ClickHouseWorkVolumeRecordRepository:
                 column_names=INSERT_COLUMNS,
                 settings={"async_insert": 0},
             )
-        except Exception as e:  # any driver/network/timeout failure -> 503/904, PG rolls back
+        except (ClickHouseError, OSError, urllib3.exceptions.HTTPError) as e:
+            # Client, network and timeout failures -> 503/904, Postgres rolls back.
+            # Programming errors (TypeError etc.) are deliberately not caught: they are 500/999.
             logger.warning("ClickHouse insert failed: %r", e)
             raise TsDBUnavailable() from e
 

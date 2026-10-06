@@ -1,7 +1,9 @@
-from django.urls import re_path
+from django.urls import path
 
 from .views import WorkVolumeListView
 
 urlpatterns = [
-    re_path(r"^work-volume-list/?$", WorkVolumeListView.as_view(), name="work-volume-list"),
+    path("work-volume-list/", WorkVolumeListView.as_view(), name="work-volume-list"),
+    # The path without a trailing slash is accepted too (APPEND_SLASH cannot redirect a POST).
+    path("work-volume-list", WorkVolumeListView.as_view()),
 ]

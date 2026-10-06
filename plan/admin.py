@@ -21,3 +21,13 @@ class FactoryUserAdmin(admin.ModelAdmin):
 class WorkVolumeAdmin(admin.ModelAdmin):
     list_display = ("factory", "start", "finish", "weight", "created")
     list_filter = ("factory",)
+
+    # Written only through plan.services (it also appends to tsDB), so read-only here.
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

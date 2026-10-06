@@ -1,0 +1,16 @@
+.git
+.venv
+venv
+__pycache__
+*.pyc
+.env
+docs/
+staticfiles/
+.pytest_cache
+*.sqlite3
+/readme.md
+/c4.drawio
+/er.puml
+/use_case_map.puml
+/V_b_24.puml
+/request.schema.json

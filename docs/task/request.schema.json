@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "properties": {
+    "factory": {
+      "type": "integer"
+    },
+    "start": {
+      "type": "integer"
+    },
+    "finish": {
+      "type": "integer"
+    },
+    "weight": {
+      "type": "integer"
+    },
+    "author": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "factory",
+    "start",
+    "finish",
+    "weight",
+    "author"
+  ]
+}

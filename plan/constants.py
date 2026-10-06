@@ -1,0 +1,24 @@
+from enum import IntEnum
+
+GROUP_FACTORY_REPRESENTATIVE = "Представитель ЗМК"
+GROUP_FACTORY_MANAGER = "Менеджер по взаимодействию с ЗМК"
+
+REQUIRED_FIELDS = ("factory", "start", "finish", "weight", "author")
+
+SECONDS_PER_DAY = 86400
+MAX_DATE_TS = 5662224000  # 2149-06-06 00:00:00 UTC, upper bound of ClickHouse Date
+MAX_WEIGHT = 2147483647
+
+
+class ErrorCode(IntEnum):
+    FACTORY_NOT_FOUND = 174
+    REQUIRED_FIELDS_MISSING = 279
+    NOT_AUTHENTICATED = 900
+    VALIDATION_ERROR = 901
+    NO_PERMITTED_GROUP = 902
+    AUTHOR_MISMATCH = 903
+    TSDB_UNAVAILABLE = 904
+    METHOD_NOT_ALLOWED = 905
+    UNSUPPORTED_MEDIA_TYPE = 906
+    NOT_ACCEPTABLE = 907
+    INTERNAL_ERROR = 999

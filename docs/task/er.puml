@@ -1,0 +1,37 @@
+@startuml
+
+map "ЗМК" as Factory {
+    id:integer => идентификатор
+    external_id:uuid => внешний идентификатор ЗМК
+    name:string => наименование ЗМК
+}
+
+map "Пользователь завода" as FactoryUser {
+    user:User => пользователь
+    factory:Factory => ЗМК
+}
+FactoryUser }o--o{ User
+FactoryUser }o-u-|| Factory
+
+map "Запись объема работы" as WorkVolumeRecord {
+    id:integer => идентификатор
+    factory:uuid => внешний идентификатор ЗМК
+    start:date => начальная дата
+    finish:date => конечная дата
+    weight: integer => вес, кг
+    author:User => автор записи
+    created:date => дата создания
+}
+WorkVolumeRecord }o-l-|| Factory
+
+map "Объем работы" as WorkVolume {
+    id:integer => идентификатор
+    factory:Factory => ЗМК
+    start:date => начальная дата
+    finish:date => конечная дата
+    weight: integer => вес, кг
+    created:date => дата создания
+}
+WorkVolume }o-r-|| Factory
+
+@enduml

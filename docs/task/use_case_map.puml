@@ -1,0 +1,12 @@
+@startuml
+
+actor "Представитель ЗМК" as F
+actor "Менеджер по взаимодействию с ЗМК" as M
+
+component "V.b.iii. Plan" {
+    usecase "[[./V_b_24.puml Сохранить объем работ]]" as V_b_24
+    F -u-> V_b_24
+    M -u-> V_b_24
+}
+
+@enduml

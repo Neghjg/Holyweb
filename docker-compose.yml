@@ -1,0 +1,66 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-plan}
+      POSTGRES_USER: ${POSTGRES_USER:-plan}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-plan}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DATABASE:-plan}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-plan}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-plan}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - ch_data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  backend:
+    build:
+      context: .
+      args:
+        INSTALL_DEV: "1"  # dev deps in the image so tests run with one command (see README)
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-change-me}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-0}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-plan}
+      POSTGRES_USER: ${POSTGRES_USER:-plan}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-plan}
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: "8123"
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-plan}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-plan}
+      CLICKHOUSE_DATABASE: ${CLICKHOUSE_DATABASE:-plan}
+      SEED_DEMO: ${SEED_DEMO:-1}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-demo12345}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+
+volumes:
+  pg_data:
+  ch_data:

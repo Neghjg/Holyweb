@@ -1,0 +1,47 @@
+@startuml
+
+actor "Пользователь" as User
+participant "V.b.iii. Plan" as Back
+database "V.d. tsDB" as tsDB
+database "V.c. taDB" as taDB
+
+User -> Back : <request> POST /work-volume-list/ [[./request.schema.json body]]
+Back -> Back : проверка на заполненность всех атрибутов
+alt все атрибуты заполнены
+
+  Back -> Back : проверка на существование ЗМК
+  alt ЗМК существует
+
+  else ЗМК не существует
+    User <-- Back : <response> 404 POST /work-volume-list/ errorCode=174
+  end
+
+  alt пользователь в группе "Представитель ЗМК"
+    alt пользователь является [[er.puml пользователем ЗМК]]
+        alt объем работ ЗМК за период уже присутствие в БД
+            Back -> taDB : обновление weight и created [[er.puml объема работы]]
+        else
+            Back -> taDB : создание [[er.puml объема работы]]
+        end
+        Back -> tsDB : создание [[er.puml записи объема работы]]
+        User <-- Back : <response> 201
+    else ЗМК не существует
+        User <-- Back : <response> 404 POST /work-volume-list/ errorCode=174
+    end
+  else пользователь в группе "Менеджер по взаимодействию с ЗМК"
+    alt объем работ ЗМК за период уже присутствие в БД
+        Back -> taDB : обновление weight и created [[er.puml объема работы]]
+    else
+        Back -> taDB : создание [[er.puml объема работы]]
+    end
+    Back -> tsDB : создание [[er.puml записи объема работы]]
+    User <-- Back : <response> 201
+  end
+else Не заполнены обязательные поля
+  User <-- Back : <response> 406 POST /work-volume-list/ errorCode=279
+end
+
+
+
+
+@enduml
